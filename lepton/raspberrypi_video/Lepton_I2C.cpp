@@ -1,5 +1,5 @@
 #include "Lepton_I2C.h"
-
+//파일 헤더 선언
 #include "leptonSDKEmb32PUB/LEPTON_SDK.h"
 #include "leptonSDKEmb32PUB/LEPTON_SYS.h"
 #include "leptonSDKEmb32PUB/LEPTON_OEM.h"
