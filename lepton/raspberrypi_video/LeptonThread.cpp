@@ -1,4 +1,10 @@
+
 #include <iostream>                     // 콘솔 출력용
+
+#include <sys/mman.h>   // shm_open, mmap
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "LeptonThread.h"               // LeptonThread 클래스 선언부
 
@@ -40,9 +46,23 @@ LeptonThread::LeptonThread() : QThread()
 	autoRangeMax = true;
 	rangeMin = 30000;
 	rangeMax = 32000;
+
+	shm_fd = -1;
+	shm_ptr = nullptr;
+	shm_size = 0;
+
 }
 
 LeptonThread::~LeptonThread() {
+	if (shm_ptr && shm_ptr != MAP_FAILED) {
+    	munmap(shm_ptr, shm_size);
+    	shm_ptr = nullptr;
+}
+	if (shm_fd >= 0) {
+    	close(shm_fd);
+    	shm_unlink("/lepton_frame");
+    	shm_fd = -1;
+}
 }
 
 
@@ -130,6 +150,52 @@ void LeptonThread::useRangeMaxValue(uint16_t newMaxValue)
    ============================================ */
 void LeptonThread::run()
 {
+	    // ===== shared memory 초기화 (최초 1번만) =====
+    if (shm_ptr == nullptr) {
+        shm_size = myImageWidth * myImageHeight * 3; // RGB888
+
+        shm_fd = shm_open("/lepton_frame", O_CREAT | O_RDWR, 0666);
+        if (shm_fd < 0) {
+            log_message(5, "[ERROR] shm_open failed");
+        } else {
+            if (ftruncate(shm_fd, shm_size) != 0) {
+                log_message(5, "[ERROR] ftruncate failed");
+            } else {
+                void* map = mmap(nullptr, shm_size,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_SHARED, shm_fd, 0);
+                if (map == MAP_FAILED) {
+                    log_message(5, "[ERROR] mmap failed");
+                } else {
+                    shm_ptr = static_cast<uint8_t*>(map);
+                    log_message(10, "[INFO] Shared memory /lepton_frame ready");
+                }
+            }
+        }
+    }
+
+	// ===== RAW용 shared memory 초기화 (최초 1번만) =====
+    if (shm_raw_ptr == nullptr) {
+        shm_raw_fd = shm_open("/lepton_raw", O_CREAT | O_RDWR, 0666);
+        if (shm_raw_fd < 0) {
+            log_message(5, "[ERROR] shm_open RAW failed");
+        } else {
+            if (ftruncate(shm_raw_fd, shm_raw_size) != 0) {
+                log_message(5, "[ERROR] ftruncate RAW failed");
+            } else {
+                void* map_raw = mmap(nullptr, shm_raw_size,
+                                     PROT_READ | PROT_WRITE,
+                                     MAP_SHARED, shm_raw_fd, 0);
+                if (map_raw == MAP_FAILED) {
+                    log_message(5, "[ERROR] mmap RAW failed");
+                } else {
+                    shm_raw_ptr = static_cast<uint16_t*>(map_raw);
+                    log_message(10, "[INFO] Shared memory /lepton_raw ready");
+                }
+            }
+        }
+    }
+
 	// 출력할 이미지 생성 (RGB888 포맷)
 	myImage = QImage(myImageWidth, myImageHeight, QImage::Format_RGB888);
 
@@ -291,6 +357,8 @@ void LeptonThread::run()
 				valueFrameBuffer =
 				  (shelf[iSegment - 1][i*2] << 8) +
 				   shelf[iSegment - 1][i*2+1];
+				
+
 
 				if (valueFrameBuffer == 0) {
 					n_zero_value_drop_frame++;
@@ -329,6 +397,15 @@ void LeptonThread::run()
 					column = (i % PACKET_SIZE_UINT16) - 2;
 					row = i / PACKET_SIZE_UINT16;
 				}
+				//　shard memory raw에　쓰기
+				if (shm_raw_ptr != nullptr &&
+    				column >= 0 && column < myImageWidth &&
+    				row    >= 0 && row    < myImageHeight) {
+
+    				int raw_index = row * myImageWidth + column;
+    				shm_raw_ptr[raw_index] = valueFrameBuffer;
+				}
+
 
 				// set pixel on QImage
 				myImage.setPixel(column, row, color);
@@ -340,7 +417,18 @@ void LeptonThread::run()
 				+ std::to_string(n_zero_value_drop_frame));
 			n_zero_value_drop_frame = 0;
 		}
+		// ================================
+        // Python shared memory로 프레임 복사
+        // ================================
+        if (shm_ptr && shm_ptr != MAP_FAILED) {
+            // QImage 내부 버퍼 포인터 가져오기 (RGB888 연속 메모리)
+            const uint8_t* imgBits =
+                reinterpret_cast<const uint8_t*>(myImage.bits());
 
+            // 이미지 전체를 shared memory로 복사
+            memcpy(shm_ptr, imgBits, shm_size);
+        }
+			
 		/* ----------------------------
 		   QImage 완성됨 → UI로 송신
 		   ---------------------------- */

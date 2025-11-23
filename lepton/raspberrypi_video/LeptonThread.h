@@ -79,6 +79,15 @@ private:
   // Lepton 3.x는 4개의 세그먼트를 조합해야 한 프레임이 완성되므로
   // segment 1~4를 각각 저장할 버퍼
   uint8_t shelf[4][PACKET_SIZE * PACKETS_PER_FRAME];
+    // ===== Python과 공유할 shared memory 관련 멤버 =====
+  int shm_fd = -1;          // shared memory 파일 디스크립터
+  uint8_t* shm_ptr = nullptr; // shared memory 매핑 주소
+  size_t shm_size = 0;      // 공유할 이미지 바이트 크기 (W*H*3)
+
+  int shm_raw_fd = -1;
+  uint16_t* shm_raw_ptr = nullptr;
+  size_t shm_raw_size = 160 * 120 * sizeof(uint16_t);
+
 
   uint16_t *frameBuffer;      // (사용되지 않지만) 프레임용 버퍼 포인터
 
