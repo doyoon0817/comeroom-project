@@ -17,7 +17,7 @@
 
 #include "LeptonThread.h"   // Lepton SPI 읽는 스레드
 #include "MyLabel.h"        // 화면에 이미지 표시용 라벨(커스텀)
-
+#include "Lepton_I2C.h"     // 🔥 I2C 기반 FFC / Reboot / FFC 모드 제어
 
 // -------------------------------------------------------
 // 사용법 출력 함수
@@ -54,11 +54,11 @@ int main(int argc, char **argv)
     // 기본 설정값
     // -----------------------------
     int typeColormap = 3;   // ironblack 기본값
-    int typeLepton = 2;     // Lepton 2.x 기본값
-    int spiSpeed = 20;      // 20MHz 기본값
-    int rangeMin = -1;      // 자동 스케일링
-    int rangeMax = -1;      // 자동 스케일링
-    int loglevel = 0;       // 로그 레벨 기본값
+    int typeLepton   = 2;   // Lepton 2.x 기본값 (3.5 쓰면 -tl 3 옵션)
+    int spiSpeed     = 20;  // 20MHz 기본값
+    int rangeMin     = -1;  // 자동 스케일링
+    int rangeMax     = -1;  // 자동 스케일링
+    int loglevel     = 0;   // 로그 레벨 기본값
 
     // -----------------------------
     // 명령줄 인자 파싱
@@ -143,7 +143,6 @@ int main(int argc, char **argv)
     QRgb red = qRgb(255, 0, 0);
 
     // 화면 왼쪽 위 80x60 영역을 빨간색으로 채움
-    // (단순 placeholder)
     for (int i = 0; i < 80; i++) {
         for (int j = 0; j < 60; j++) {
             myImage.setPixel(i, j, red);
@@ -186,6 +185,12 @@ int main(int argc, char **argv)
     // FFC 버튼 → 스레드의 performFFC() 호출
     QObject::connect(button1, SIGNAL(clicked()),
                      thread, SLOT(performFFC()));
+
+    // -------------------------------------------------------
+    // 5) Lepton 자동 FFC 끄기 (Manual 모드로 고정)
+    // -------------------------------------------------------
+    //  → 이후에는 위 FFC 버튼을 클릭할 때만 셔터가 닫히고 보정 수행
+    lepton_disable_ffc_auto();
 
     // 스레드 실행 시작 (Lepton SPI 프레임 읽기 시작)
     thread->start();
